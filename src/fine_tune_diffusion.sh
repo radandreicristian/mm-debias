@@ -1,0 +1,16 @@
+python tti_fine_tune/train_text_to_image.py \
+--pretrained_model_name_or_path BAAI/AltDiffusion-m9 \
+--train_data_dir dataset_fine_tune \
+--mixed_precision fp16 \
+--allow_tf32 \
+--gradient_checkpointing \
+--resolution 256 \
+--center_crop \
+--random_flip \
+--train_batch_size 1 \
+--gradient_accumulation_steps 1 \
+--num_train_epochs 2 \
+--learning_rate 5.0e-09 \
+--lr_scheduler constant \
+--lr_warmup_steps 0 \
+--output_dir "output_fine_tune/alt_diffusion_m9_fine_tune"
