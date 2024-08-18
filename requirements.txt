@@ -1,0 +1,7 @@
+diffusers==0.13.0
+accelerate
+datasets
+transformers
+sentencepiece
+pillow
+peft
