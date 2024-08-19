@@ -5,3 +5,4 @@ transformers
 sentencepiece
 pillow
 peft
+pandas
