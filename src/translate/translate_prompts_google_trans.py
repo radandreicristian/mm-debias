@@ -7,11 +7,23 @@ from tqdm import tqdm
 translator = Translator()
 
 def translate_text(text, target_language, source_language='auto'):
-    # Translate the text
+    """
+    Translate the text from source_language to target_language
+    text: Text to translate
+    target_language: Target language code
+    source_language: Source language code
+    return: Translated text as a string
+    """
     translation = translator.translate(text, src=source_language, dest=target_language)
     return translation.text
 
 def translate_with_retry(text, target_language, source_language, retries=10, delay=1):
+    """
+    Translate the text with retries in case of failure.
+    retries: Number of retries
+    delay: Delay between retries in seconds
+    return: Translated text as a string
+    """
     for attempt in range(retries):
         try:
             # Attempt to translate the text
@@ -28,11 +40,17 @@ def translate_with_retry(text, target_language, source_language, retries=10, del
 
 
 def translate_with_progress(values, target_language, source_language='auto'):
+    """
+    Translate the values to the target language with progress tracking.
+    values: Array of text values to translate
+    target_language: Target language code
+    source_language: Source language
+    return: Translated values as a numpy array
+    """
     translated_values = []
-
+    missing_values = []
+    index=0
     for text in tqdm(values, desc=f"Translating to {target_language}"):
-        index=0
-        missing_values = []
         result = None
         try:
             result = translate_with_retry(text, target_language, source_language)
@@ -41,7 +59,6 @@ def translate_with_progress(values, target_language, source_language='auto'):
             print(f"Error translating text: {text}")
             print(e)
             missing_values.append([text, index])
-
         time.sleep(0.20)
         index+=1        
       
@@ -56,17 +73,19 @@ def main():
     # Define target languages
     target_languages = ["ja", "ko", "zh-cn", "zh-tw"]
 
-    # Translate to target languages
+    # Translate prompts to target languages
     for lang in target_languages:
         # Translate values with progress tracking
         translated_values, missing_data = translate_with_progress(values.flatten(), lang, "en")
         np.savetxt(f"./prompts/linear_prompts/prompts_{lang}_linear.csv", translated_values, fmt='%s', delimiter=",")
 
+        # If all values are translated, save the data in the original format
         if translated_values.size == values.size:
             translated_values = translated_values.reshape((translated_values.shape[0]//2,2))  # Reshape back to original shape
             translated_data= np.vstack((columns, translated_values))
             np.savetxt(f"./prompts/prompts_{lang}.csv", translated_data, fmt='%s', delimiter=",")
 
+        # Save missing data to a separate file, to run translation again and insert the values at the correct index
         if missing_data.size > 0:
             np.savetxt(f"./prompts/missing_prompts/{lang}.csv", missing_data, fmt='%s', delimiter=",")
         
