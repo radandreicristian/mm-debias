@@ -7,3 +7,4 @@ pillow
 peft
 dlib
 transformers
+pandas
