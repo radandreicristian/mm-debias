@@ -43,6 +43,7 @@ from tqdm.auto import tqdm
 from transformers import XLMRobertaTokenizer
 from text_encoder import RobertaSeriesModelWithTransformation
 from transformers.utils import ContextManagers
+import itertools
 
 import diffusers
 from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, DiffusionPipeline, UNet2DConditionModel
@@ -362,13 +363,12 @@ def main():
     # frozen models from being partitioned during `zero.Init` which gets called during
     # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
-    with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        text_encoder = RobertaSeriesModelWithTransformation.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-        )
-        vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
-        )
+    text_encoder = RobertaSeriesModelWithTransformation.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
 
     text_encoder.set_tokenizer(tokenizer)
     unet = UNet2DConditionModel.from_pretrained(
@@ -377,8 +377,9 @@ def main():
 
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    #text_encoder.requires_grad_(False)
     unet.train()
+    text_encoder.train()
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -405,20 +406,36 @@ def main():
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
+    
+    # Function for unwrapping if model was compiled with `torch.compile`.
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model
+        return model
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
+        text_encoder.gradient_checkpointing_enable()
+        
+    if unwrap_model(text_encoder).dtype != torch.float32:
+        raise ValueError(
+            f"Text encoder loaded as datatype {unwrap_model(text_encoder).dtype}." f" {low_precision_error_string}"
+        )
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
+    
+    params_to_optimize = (
+        itertools.chain(unet.parameters(), text_encoder.parameters())
+    )
 
     # Initialize the optimizer
     optimizer_cls = torch.optim.AdamW
 
     optimizer = optimizer_cls(
-        unet.parameters(),
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -525,8 +542,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
     # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
@@ -540,7 +557,7 @@ def main():
         args.mixed_precision = accelerator.mixed_precision
 
     # Move text_encode and vae to gpu and cast to weight_dtype
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    #text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -561,12 +578,6 @@ def main():
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
-
-    # Function for unwrapping if model was compiled with `torch.compile`.
-    def unwrap_model(model):
-        model = accelerator.unwrap_model(model)
-        model = model
-        return model
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -608,6 +619,16 @@ def main():
 
     else:
         initial_global_step = 0
+        
+    def encode_prompt(text_encoder, input_ids):
+        text_input_ids = input_ids.to(text_encoder.device)
+
+        prompt_embeds = text_encoder(
+            text_input_ids,
+        )
+        prompt_embeds = prompt_embeds[0]
+
+        return prompt_embeds
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
@@ -622,7 +643,7 @@ def main():
         epoch_loss = 0.0
         epoch_step = 0
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(unet, text_encoder):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
@@ -644,7 +665,7 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                encoder_hidden_states = encode_prompt(text_encoder,batch["input_ids"])
 
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = noise
@@ -665,7 +686,10 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    params_to_clip = (
+                        itertools.chain(unet.parameters(), text_encoder.parameters())
+                    )
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -734,6 +758,7 @@ def main():
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
+        text_encoder = unwrap_model(text_encoder)
 
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -752,7 +777,7 @@ def main():
             model_index = json.load(f)
 
         model_index["text_encoder"] = [
-            "alt-diffusion",
+            "alt_diffusion",
             "RobertaSeriesModelWithTransformation"
         ]
         
