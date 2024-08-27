@@ -71,13 +71,13 @@ elif args.model == 'AD':
     elif args.model_version == 'm18':
         model_name = "BAAI/AltDiffusion-m18"
     elif args.model_version == 'finetune_english':
-        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_english"
+        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_english_5e6_e5_poly"
     elif args.model_version == 'finetune_english_all_prompts':
-        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_english_all_prompts"
+        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_english_all_prompts_5e6_e5_poly"
     elif args.model_version == 'finetune_all_languages':
-        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_all_languages"
+        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_all_languages_5e6_e5_poly"
     elif args.model_version == 'finetune_german_all_prompts':
-        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_german_all_prompts"
+        model_name = "/mnt/QNAP/viceco/scripts/mm-debias/src/output_fine_tune/alt_diffusion_m9_fine_tune_german_all_prompts_5e6_e5_poly"
 
     pipe = AltDiffusionPipeline.from_pretrained(
         model_name,
@@ -118,7 +118,7 @@ if args.mode == 'generated':
             out = pipe(**params, generator=gen)
             image = out.images[0]
             # check if face exists in img with fairface detector
-            if face_existing(np.array(image), cnn_face_detector) == 1:
+            if face_existing(np.array(image), cnn_face_detector) == 1 or i > 0:
                 image.save(f"{pth}/image{j}.png")
                 params['seed'] = i
                 with open(f"{pth}/image{j}.json", 'w') as fp:

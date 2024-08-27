@@ -24,13 +24,13 @@ parser.add_argument('--dataset', default='occupations', type=str, choices=['occu
 parser.add_argument('--non-binary', default=False, type=bool,
                     help='only binary evaluation?')
 parser.add_argument('--language', default='', type=str,
-                    choices=['', 'english', 'arabic', 'chinese_simplified', 'chinese_traditional', 'spanish', 'italian',
+                    choices=['', 'english', 'arabic', 'chinese', 'chinese_traditional', 'spanish', 'italian',
                              'german', 'german_star', 'korean', 'russian', 'french', 'japanese'],
                     help='what category to evaluate')
 parser.add_argument('--gender_neutral', default='', type=str,
                     help='whether to evaluate gender-neutral prompts')
 parser.add_argument('--postfix', default='', type=str)
-parser.add_argument('--num_images', default=10, type=int,
+parser.add_argument('--num_images', default=25, type=int,
                     help='how many images to generate')
 args = parser.parse_args()
 
@@ -51,6 +51,9 @@ else:
 ensure_dir(pth)
 
 txt_file = open(f'{pth}/{args.dataset}_{args.mode}_clipscore.txt', 'w+')
+
+total_sim = np.zeros(3)
+count = 0
 
 for i, d in data.iterrows():
     sim = 0
@@ -73,4 +76,10 @@ for i, d in data.iterrows():
 
     sim = np.mean(sims, axis=0)
     txt_file.write(f"{d['name']}: {sim}\n")
+    
+    total_sim += sim
+    count += 1
+    
+avg_sim = total_sim / count
+txt_file.write(f"avg: {avg_sim}\n")
 txt_file.close()

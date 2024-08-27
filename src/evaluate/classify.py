@@ -8,9 +8,9 @@ import clip
 import torch
 
 parser = argparse.ArgumentParser(description='Bias in Diffusion Evaluation')
-parser.add_argument('--model', default='SD', type=str,
+parser.add_argument('--model', default='AD', type=str,
                     help='which model to evaluate')
-parser.add_argument('--model_version', default='1-5', type=str,
+parser.add_argument('--model_version', default='m9', type=str,
                     help='which version of this model to evaluate')
 parser.add_argument('--mode', default='generated', type=str,
                     choices=['laion', 'sega', 'generated', 'baseline', 'baseline_ext', 'baseline_neg'],
@@ -23,25 +23,27 @@ parser.add_argument('--action', default='gender', type=str, choices=['gender', '
                     help='what category to evaluate')
 parser.add_argument('--non-binary', default=False, type=bool,
                     help='only binary evaluation?')
-parser.add_argument('--num_images', default=100, type=int,
+parser.add_argument('--num_images', default=25, type=int,
                     help='how many images to generate')
 parser.add_argument('--language', default='', type=str,
-                    choices=['', 'english', 'arabic', 'chinese_simplified', 'chinese_traditional', 'spanish', 'italian',
+                    choices=['', 'english', 'arabic', 'chinese', 'chinese_traditional', 'spanish', 'italian',
                              'german', 'german_star', 'korean', 'russian', 'french', 'japanese'],
                     help='what category to evaluate')
 parser.add_argument('--gender_neutral', default='', type=str,
                     help='whether to evaluate gender-neutral prompts')
+parser.add_argument('--postfix', default='', type=str)
 args = parser.parse_args()
 
+# TODO - Swap this with different langs?
 if args.dataset == 'occupations':
-    data = pd.read_csv('prompts/gender_neutral/occ_english.csv')['name']
+    data = pd.read_csv('data/eval/prompts/indirect:gender_neutral/occ_english.csv')['name']
 elif args.dataset == 'adjectives':
     with open(f'prompts/adjectives.txt') as f:
         data = [line.split("\n", 1)[0] for line in f]
 
 if args.classifier == 'fairface':
     dlib.DLIB_USE_CUDA = True
-    cnn_face_detector = dlib.cnn_face_detection_model_v1('dlib_models/mmod_human_face_detector.dat')
+    cnn_face_detector = dlib.cnn_face_detection_model_v1('models/mmod_human_face_detector.dat')
 elif args.classifier == 'clip':
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, preprocess = clip.load("ViT-L/14", device=device)
@@ -71,21 +73,21 @@ if args.mode == 'laion':
 
 else:
     if not args.language:
-        pth = f"results/{args.model}_{args.model_version}"
-        pth_ff = f'detected_faces/{args.model}_{args.model_version}/{args.mode}'
+        pth = f"data/results/{args.model}_{args.model_version}"
+        pth_ff = f'data/detected_faces/{args.model}_{args.model_version}/{args.mode}'
     else:
         if not args.gender_neutral:
-            pth = f"results/multiling/{args.model}_{args.model_version}/{args.language}"
-            pth_ff = f'detected_faces/multiling/{args.model}_{args.model_version}/{args.language}/{args.mode}'
+            pth = f"data/results/multiling/{args.model}_{args.model_version}/{args.language}"
+            pth_ff = f'data/detected_faces/multiling/{args.model}_{args.model_version}/{args.language}/{args.mode}'
         else:
-            pth = f"results/multiling/gender_neutral/{args.model}_{args.model_version}/{args.language}"
-            pth_ff = f'detected_faces/multiling/gender_neutral/{args.model}_{args.model_version}/{args.language}/{args.mode}'
+            pth = f"data/results/multiling/gender_neutral/{args.model}_{args.model_version}/{args.language}"
+            pth_ff = f'data/detected_faces/multiling/gender_neutral/{args.model}_{args.model_version}/{args.language}/{args.mode}'
 
     ensure_dir(pth)
     txt_file = open(f'{pth}/{args.dataset}_{args.classifier}_{args.mode}.txt', 'w+')
     for d in data:
         man, woman = 0, 0
-        img_list = get_img_list(args.mode, d, args)
+        img_list = get_img_list(args.mode, d, args, images_path_postfix=args.postfix)
         if args.classifier == 'fairface':
             SAVE_DETECTED_AT = f'{pth_ff}/{d}'
             ensure_dir(SAVE_DETECTED_AT)

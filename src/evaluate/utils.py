@@ -17,6 +17,7 @@ import clip
 from PIL import Image
 from scipy.stats import pearsonr, spearmanr
 import cv2
+from torchvision.models import ResNet34_Weights
 
 
 
@@ -62,7 +63,7 @@ def face_existing(img, cnn_face_detector, default_max_size=800, size=300, paddin
 
 
 def detect_face(image_paths, SAVE_DETECTED_AT, cnn_face_detector, default_max_size=800, size=300, padding=0.25):
-    sp = dlib.shape_predictor('dlib_models/shape_predictor_5_face_landmarks.dat')
+    sp = dlib.shape_predictor('models/shape_predictor_5_face_landmarks.dat')
     base = 2000  # largest width and height
     for index, image_path in tqdm(enumerate(image_paths)):
         if index % 1000 == 0:
@@ -104,10 +105,15 @@ def detect_face(image_paths, SAVE_DETECTED_AT, cnn_face_detector, default_max_si
 def predict_age_gender_race(save_prediction_at, imgs_path, num_images):
     img_names = [os.path.join(imgs_path, x) for x in os.listdir(imgs_path) if 'ipynb' not in x][:num_images]
 
-    model_fair_7 = torchvision.models.resnet34(pretrained=True)
+    model_fair_7 = torchvision.models.resnet34(weights=ResNet34_Weights.DEFAULT)
     model_fair_7.fc = nn.Linear(model_fair_7.fc.in_features, 18)
-    model_fair_7.load_state_dict(torch.load('dlib_models/res34_fair_align_multi_7_20190809.pt'))
-    model_fair_7 = model_fair_7.to('cuda')
+    model_path = 'models/res34_fair_align_multi_7_20190809.pt'
+    if torch.cuda.is_available():
+        model_fair_7.load_state_dict(torch.load(model_path, weights_only=True))
+        model_fair_7 = model_fair_7.to('cuda:0')
+    else:
+        model_fair_7.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
+        model_fair_7 = model_fair_7.to('cpu') 
     model_fair_7.eval()
 
     trans = transforms.Compose([

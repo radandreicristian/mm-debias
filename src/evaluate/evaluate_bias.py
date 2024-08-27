@@ -21,6 +21,10 @@ parser.add_argument('--num_occs', default=10, type=int,
                     help='how many occupations to evaluate for exp max')
 parser.add_argument('--num_samples', default=1000, type=int,
                     help='how many samples to evaluate for exp max')
+parser.add_argument('--language', default='', type=str,
+                    choices=['', 'english', 'arabic', 'chinese', 'chinese_traditional', 'spanish', 'italian',
+                             'german', 'german_star', 'korean', 'russian', 'french', 'japanese'],
+                    help='what category to evaluate')
 args = parser.parse_args()
 
 categories = {
@@ -30,10 +34,10 @@ categories = {
     'skin_tone': list(range(10))}
 
 # locs = ['laion', 'generated', 'sega', 'baseline', 'baseline_ext', 'baseline_neg']
-locs = ['generated', 'sega', 'baseline', 'baseline_ext', 'baseline_neg']
+locs = ['generated']
 if args.dataset == 'occupations':
-    with open('prompts/final_occupations.txt') as f:
-        data = [line.split("   ", 1)[0] for line in f][1:]
+    with open('data/eval/prompts/occ_english.csv') as f:
+        data = [line.split(",")[0] for line in f][1:]
 elif args.dataset == 'adjectives':
     with open(f'prompts/adjectives.txt') as f:
         data = [line.split("\n", 1)[0] for line in f]
@@ -49,7 +53,8 @@ df_f = []
 for loc in locs:
     fairness_scores_l1 = []
     fairness_scores_l2 = []
-    results = pd.read_csv(f'results/{args.model}_{args.model_version}/{args.dataset}_{args.classifier}_{loc}.txt',
+    # Todo - Fix this path
+    results = pd.read_csv(f'data/results/multiling/{args.model}_{args.model_version}/{args.language}/{args.dataset}_{args.classifier}_{loc}.txt',
                           sep=' ', skiprows=range(0, len_ * 2, 2), header=None)
     results.iloc[:, 1] = results.iloc[:, 1].apply(lambda x: int(re.findall(r'\d+', str(x))[0]))
     results.iloc[:, 3] = results.iloc[:, 3].apply(lambda x: int(re.findall(r'\d+', str(x))[0]))
@@ -87,4 +92,5 @@ df_f.append(['random', mean_l1, std_l1, exp_max_l1, exp_std_l1, mean_l2, std_l2,
 df_f = pd.DataFrame(df_f, columns=['location', 'mean_l1', 'std_l1', 'exp_max_l1', 'exp_std_l1', 'mean_l2', 'std_l2',
                                    'exp_max_l2', 'exp_std_l2'])
 df_f = df_f.round(decimals=2)
-df_f.to_csv(f'results/{args.model}_{args.model_version}/fairness_{args.classifier}_{args.dataset}.csv', index=False)
+
+df_f.to_csv(f'data/results/multiling/{args.model}_{args.model_version}/{args.language}/fairness_{args.classifier}_{args.dataset}.csv', index=False)
