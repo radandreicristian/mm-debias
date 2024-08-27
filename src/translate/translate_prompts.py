@@ -6,6 +6,10 @@ from tqdm import tqdm
 # Initialize the translator
 translator = Translator()
 
+def save_with_encoding(filename, data, delimiter=";"):
+    with open(filename, "w", encoding="utf-8", newline='') as f:
+        np.savetxt(f, data, fmt='%s', delimiter=delimiter)
+
 def translate_text(text, target_language, source_language='auto'):
     """
     Translate the text from source_language to target_language
@@ -71,23 +75,23 @@ def main():
     values = data[1:]
 
     # Define target languages
-    target_languages = ["ja", "ko", "zh-cn", "zh-tw"]
+    target_languages = ["de"]
 
     # Translate prompts to target languages
     for lang in target_languages:
         # Translate values with progress tracking
         translated_values, missing_data = translate_with_progress(values.flatten(), lang, "en")
-        np.savetxt(f"./prompts/linear_prompts/prompts_{lang}_linear.csv", translated_values, fmt='%s', delimiter=",")
+        save_with_encoding(f"./prompts/linear_prompts/prompts_{lang}_linear.csv", translated_values)
 
         # If all values are translated, save the data in the original format
         if translated_values.size == values.size:
             translated_values = translated_values.reshape((translated_values.shape[0]//2,2))  # Reshape back to original shape
             translated_data= np.vstack((columns, translated_values))
-            np.savetxt(f"./prompts/prompts_{lang}.csv", translated_data, fmt='%s', delimiter=",")
+            save_with_encoding(f"./prompts/prompts_{lang}.csv", translated_data)
 
         # Save missing data to a separate file, to run translation again and insert the values at the correct index
         if missing_data.size > 0:
-            np.savetxt(f"./prompts/missing_prompts/{lang}.csv", missing_data, fmt='%s', delimiter=",")
+            save_with_encoding(f"./prompts/missing_prompts/{lang}.csv", missing_data)
         
         print(f"Done translating to {lang}")
 
