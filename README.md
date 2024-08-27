@@ -1,4 +1,4 @@
-# Debiasing Multi-Language Lareg Vision-Language Models
+# Debiasing Multi-Language Large Vision-Language Models
 
 ## Context
 
